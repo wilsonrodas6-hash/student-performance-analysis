@@ -1,0 +1,143 @@
+---
+title: "Student Performance Analysis"
+output: html_document
+date: "2026-10-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Ask
+
+This project analyzes student performance in a math course. The questions:
+
+1. How strongly do earlier grades (G1, G2) predict the final grade (G3)?
+2. Which factors (study time, absences, past failures, family support) are most associated with final grades?
+3. Do students who want to pursue higher education perform differently?
+
+## 2. Prepare
+
+```{r libraries, message=FALSE}
+library(tidyverse)
+library(janitor)
+library(skimr)
+```
+
+```{r import, message=FALSE}
+students <- read_delim("data/student-mat.csv", delim = ";") %>%
+  clean_names()
+
+glimpse(students)
+```
+## 3. Process: clean the data
+
+Data quality check: there are no missing values and no duplicate rows.
+
+```{r clean}
+students_clean <- students %>%
+  mutate(across(where(is.character), as.factor))
+
+summary(students_clean$g3)
+sum(students_clean$g3 == 0)
+```
+
+**Decision:** 38 students (about 10%) have a final grade of 0, which most likely means they did not sit the final exam. These students are excluded from the analysis of grades, leaving a cleaner group of students who received a real grade.
+
+```{r exclude-zeros}
+students_graded <- students_clean %>%
+  filter(g3 > 0)
+
+nrow(students_graded)
+```
+
+## 4. Analyze
+
+### Question 1: Do earlier grades predict the final grade?
+
+```{r correlation}
+students_graded %>%
+  select(g1, g2, g3) %>%
+  cor() %>%
+  round(2)
+```
+
+```{r plot-g2-g3, message=FALSE}
+ggplot(students_graded, aes(x = g2, y = g3)) +
+  geom_point(alpha = 0.5, color = "steelblue") +
+  geom_smooth(method = "lm", color = "darkred") +
+  labs(title = "Second-period grade vs. final grade",
+       x = "G2 (second-period grade)",
+       y = "G3 (final grade)")
+```
+
+**Finding 1:** Earlier grades are strong predictors of the final grade. The correlation between the second-period grade (G2) and the final grade (G3) is 0.97, and between the first-period grade (G1) and G3 it is 0.89. Students who perform well early tend to keep performing well, so early-term grades can help identify students who may need support.
+
+### Question 2: Which factors are linked to the final grade?
+
+```{r factor-correlations}
+num_data <- students_graded %>%
+  select(where(is.numeric), -g1, -g2)
+
+sort(round(cor(num_data)[, "g3"], 2))
+```
+
+```{r plot-failures}
+ggplot(students_graded, aes(x = factor(failures), y = g3)) +
+  geom_boxplot(fill = "steelblue", alpha = 0.6) +
+  labs(title = "Final grade by number of past failures",
+       x = "Past class failures",
+       y = "G3 (final grade)")
+```
+
+```{r plot-studytime}
+ggplot(students_graded, aes(x = factor(studytime), y = g3)) +
+  geom_boxplot(fill = "darkseagreen", alpha = 0.6) +
+  labs(title = "Final grade by weekly study time",
+       x = "Study time (1 = least, 4 = most)",
+       y = "G3 (final grade)")
+```
+
+**Finding 2:** Among the background factors, past class failures have the strongest link to the final grade (correlation -0.29), followed by absences (-0.21). Weekend alcohol use and going out also show mild negative links, while parents' education shows mild positive ones. Study time has only a weak positive link (0.13). No single factor is strong on its own, and these correlations do not prove cause and effect. Still, students with previous failures and frequent absences are the most likely to need extra support.
+
+### Question 3: Do students who want higher education perform differently?
+
+```{r higher-summary}
+students_graded %>%
+  group_by(higher) %>%
+  summarise(students = n(),
+            mean_g3 = round(mean(g3), 1),
+            median_g3 = median(g3))
+```
+
+```{r plot-higher}
+ggplot(students_graded, aes(x = higher, y = g3, fill = higher)) +
+  geom_boxplot(alpha = 0.6, show.legend = FALSE) +
+  labs(title = "Final grade by plans for higher education",
+       x = "Wants to pursue higher education?",
+       y = "G3 (final grade)")
+```
+
+**Finding 3:** Students who plan to pursue higher education scored higher on average (11.6 vs. 9.7 out of 20). However, only 14 of the 357 graded students said they do not plan to continue, so this difference should be interpreted with caution. It suggests that motivation and future plans are related to performance, but it does not show that one causes the other.
+
+## 5. Conclusion and recommendations
+
+This analysis examined 395 students in a math course. After excluding 38 students with a final grade of 0, 357 students were analyzed. The data had no missing values or duplicate rows.
+
+**Key results**
+
+1. Earlier grades are by far the strongest predictor of the final grade (G2 vs. G3 correlation of 0.97).
+2. Among background factors, past class failures (-0.29) and absences (-0.21) show the strongest links to lower final grades. Study time has only a weak link (0.13).
+3. Students who plan to pursue higher education scored about 2 points higher on average, although the comparison group was small (14 students).
+
+**Recommendations**
+
+- Use first- and second-period grades as an early warning signal to identify students who may need extra help before the final exam.
+- Offer targeted support to students with previous class failures and to those with frequent absences.
+- Track attendance, since it is one of the few factors a school can act on directly.
+
+**Limitations**
+
+- The data comes from a single math course, so the results may not apply to other subjects or schools.
+- The relationships found are correlations and do not prove cause and effect.
+- Excluding students with a final grade of 0 was a judgment call based on the assumption that they did not sit the final exam.
